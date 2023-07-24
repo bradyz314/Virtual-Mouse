@@ -5,6 +5,5 @@ To move the mouse, make a victory sign and move your hand around the camera. To 
 do the opposite. To double click, keep both the index and middle finger open and move them closer together.
 To drag, make a fist and move your hand around the camera. 
 Scrolling Functionality:
-As for scrolling, keep all fingers except the thumb closed. Then, the user can move their hand from the initial position to indicate whether they want to scroll vertically
-or horizontally. The speed of the scroll is based on the distance from the initial position.
+As for scrolling, close the thumb and pinky while keeping the rest of the fingers open. Then, the user can move their hand from the initial position to indicate whether they want to scroll vertically or horizontally. The speed of the scroll is based on the distance from the initial position.
 
