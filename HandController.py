@@ -5,6 +5,7 @@ import pyautogui
 import mediapipe as mp
 import HandTracking
 from enum import IntEnum
+from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
 pyautogui.FAILSAFE = False
 
@@ -37,6 +38,8 @@ class HandController():
     canClick = False
     # Whether the mouse is currently being dragged
     mouseDrag = False
+    # Whether shift is being held down
+    holdShift = False
 
     def __init__(self):
         # Set capture to default web camera
@@ -93,21 +96,22 @@ class HandController():
     
     def scroll(self):
         deltaX, deltaY, _ = self.getChangeInHandPositions(False)
-        if deltaY >= deltaX:
+        if abs(deltaY) >= abs(deltaX):
             if abs(deltaY) >= 5:
+                if self.holdShift:
+                    self.holdShift = False
+                    pyautogui.keyUp(key="shift")
                 scrollAmount = -deltaY
                 if abs(deltaY) > 125: scrollAmount = 125 if scrollAmount > 0 else -125
                 pyautogui.scroll(scrollAmount)
         else:
             if abs(deltaX) >= 5:
+                if not self.holdShift: 
+                    self.holdShift = True
+                    pyautogui.keyDown(key="shift")
                 scrollAmount = deltaX
                 if abs(deltaX) > 125: scrollAmount = 125 if scrollAmount > 0 else -125
-                print("Horizontal:", self.startHandPosition, scrollAmount)
-                pyautogui.keyDown(key="shift")
-                pyautogui.keyDown(key="ctrl")
                 pyautogui.scroll(scrollAmount)
-                pyautogui.keyUp(key="shift")
-                pyautogui.keyUp(key="ctrl")
 
     # Check which gesture is currently being held. If a new gesture is held for 5 frames,
     # the controller will switch the corresponding state.
@@ -119,8 +123,8 @@ class HandController():
         pinkyOpen = self.isFingerOpen(20)
         candidateState = ControllerState.IDLE
 
-        if (not ringOpen and not pinkyOpen):
-            if not thumbOpen:
+        if (not thumbOpen and not pinkyOpen):
+            if not ringOpen:
                 if indexOpen and middleOpen: 
                     distBetweenIndexAndMiddle = self.getDistanceBetweenPoints(8, 12)
                     if distBetweenIndexAndMiddle >= 25: candidateState = ControllerState.MOVE_CURSOR
@@ -129,7 +133,7 @@ class HandController():
                 elif indexOpen: candidateState = ControllerState.RIGHT_CLICK
                 else: 
                     candidateState = ControllerState.DRAG
-            elif(not indexOpen and not middleOpen):
+            else:
                 candidateState = ControllerState.SCROLLING
 
         if candidateState != self.currentState: 
@@ -168,6 +172,10 @@ class HandController():
                     self.currentState != ControllerState.SCROLLING
                 ): 
                         self.prevHandPosition = None
+                # Reset holdShift if current state is not SCROLLING
+                if self.holdShift and self.currentState != ControllerState.SCROLLING:
+                    self.holdShift = False
+                    pyautogui.keyUp(key="shift")
                 # Switch case to check the current controller state. 
                 match self.currentState:
                     case ControllerState.MOVE_CURSOR:
