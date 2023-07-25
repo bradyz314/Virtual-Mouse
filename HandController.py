@@ -127,7 +127,7 @@ class HandController():
     
     def getValueBasedOnPinchDistance(self, pinchRange, valueRange):
         # The actual distance between the index and thumb
-        pinchDist = pinchDist = self.getDistanceBetweenPoints(4, 8)
+        pinchDist = self.getDistanceBetweenPoints(4, 8)
         # Bound pinchDist by pinchRange
         pinchDist = max(pinchRange[0], pinchDist)
         pinchDist = min(pinchRange[1], pinchDist)
@@ -136,6 +136,10 @@ class HandController():
     def changeVolume(self):
         newVolume = self.getValueBasedOnPinchDistance([20, 200], self.volumeRange)
         self.volume.SetMasterVolumeLevel(newVolume, None)
+    
+    def changeBrightness(self):
+        newBrightness = self.getValueBasedOnPinchDistance([20, 165], [0, 100])
+        sbc.set_brightness(newBrightness)
 
     # Check which gesture is currently being held. If a new gesture is held for 5 frames,
     # the controller will switch the corresponding state.
@@ -230,6 +234,8 @@ class HandController():
                         self.scroll()
                     case ControllerState.CHANGE_VOLUME:
                         self.changeVolume()
+                    case ControllerState.CHANGE_BRIGHTNESS:
+                        self.changeBrightness()
             else:
                 self.currentState = ControllerState.IDLE
                 self.frameCount = 0
