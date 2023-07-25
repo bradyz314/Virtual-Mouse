@@ -78,12 +78,14 @@ class HandController():
     def getChangeInHandPositions(self, prev):
         # Get current hand position
         x, y = self.getHandPosition()
-        # Find the "distance" between the previous and new hand position
+        # Case on whether to check the change from the previous or intial position
         if prev:
+            # If prevHandPosition is None, set it to the current position
             if self.prevHandPosition is None: self.prevHandPosition = (x, y)
             deltaX, deltaY= x - self.prevHandPosition[0], y - self.prevHandPosition[1]
             self.prevHandPosition = (x, y)
         else:
+            # If startHandPosition is None, set it to the current position
             if self.startHandPosition is None: self.startHandPosition = (x, y)
             deltaX, deltaY= x - self.startHandPosition[0], y - self.startHandPosition[1]
         deltaDist = (deltaX**2 + deltaY**2)**(1/2)
@@ -175,7 +177,6 @@ class HandController():
                 self.frameCount += 1
                 if (self.frameCount == 3): 
                     self.currentState = candidateState
-                    print(self.currentState)
 
     def start(self):
         while self.capture.isOpened():
@@ -203,6 +204,9 @@ class HandController():
                     self.currentState != ControllerState.SCROLLING
                 ): 
                         self.prevHandPosition = None
+                # Reset the starting hand position if the current state is not SCROLLING
+                if self.startHandPosition is not None and self.currentState != ControllerState.SCROLLING:
+                    self.startHandPosition = None
                 # Reset holdShift if current state is not SCROLLING
                 if self.holdShift and self.currentState != ControllerState.SCROLLING:
                     self.holdShift = False
