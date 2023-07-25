@@ -1,10 +1,11 @@
 import cv2
-import time
 import math
 import pyautogui
-import mediapipe as mp
+import numpy as np
 import HandTracking
 from enum import IntEnum
+from comtypes import CLSCTX_ALL
+import screen_brightness_control as sbc
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
 pyautogui.FAILSAFE = False
@@ -18,16 +19,20 @@ class ControllerState(IntEnum):
     DRAG = 4
     DOUBLE_CLICK = 5
     SCROLLING = 6
+    CHANGE_VOLUME = 7
+    CHANGE_BRIGHTNESS = 8
 
 class HandController():
-    # Camera Variables
-    CAM_WIDTH, CAM_HEIGHT = 0, 0
+    # Camera Capture
     capture = None
     # State variables
     currentState = ControllerState.IDLE
     stateToSwitchTo = currentState
     # HandTracker object to detect hands
     handTracker = HandTracking.HandTracker(maxHands=1, detectionCon=0.7)
+    # Volume Variables
+    volume = None
+    volumeRange = None
     # Variable that keeps track of the previous position
     prevHandPosition = None
     # Variable that keeps track of where the hand started at beginning of state
@@ -43,9 +48,12 @@ class HandController():
 
     def __init__(self):
         # Set capture to default web camera
-        HandController.capture = cv2.VideoCapture(0)
-        HandController.CAM_WIDTH = HandController.capture.get(cv2.CAP_PROP_FRAME_WIDTH)
-        HandController.CAM_HEIGHT = HandController.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        self.capture = cv2.VideoCapture(0)
+        # Set up volume variables
+        devices = AudioUtilities.GetSpeakers()
+        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        self.volume = interface.QueryInterface(IAudioEndpointVolume)
+        self.volumeRange = self.volume.GetVolumeRange()[:2]
     
     def getDistanceBetweenPoints(self, p1, p2):
         dist = (self.landmarks[p1][0] - self.landmarks[p2][0])**2
@@ -57,10 +65,10 @@ class HandController():
     def isFingerOpen(self, landmarkNo):
         distFromKnuckleToWrist = self.getDistanceBetweenPoints(landmarkNo - 3, 0)
         distFromTipToWrist = self.getDistanceBetweenPoints(landmarkNo, 0)
-        return (distFromTipToWrist * 0.6) > distFromKnuckleToWrist
+        return (distFromTipToWrist * 0.7) > distFromKnuckleToWrist
     
     def isThumbOpen(self):
-        return self.getDistanceBetweenPoints(4, 9) > 75
+        return self.getDistanceBetweenPoints(4, 13) > 100
 
     def getHandPosition(self):
         knuckleLandmark = self.handTracker.results.multi_hand_landmarks[0].landmark[9]
@@ -95,9 +103,12 @@ class HandController():
         pyautogui.moveTo(oldX + deltaX * ratio, oldY + deltaY * ratio, 0.1)
     
     def scroll(self):
+        # Get change in distances from the starting hand position
         deltaX, deltaY, _ = self.getChangeInHandPositions(False)
+        # Case on whether the change in horizontal or vertical is greater to figure out where to scroll
         if abs(deltaY) >= abs(deltaX):
             if abs(deltaY) >= 5:
+                # If shift is being held, release it.
                 if self.holdShift:
                     self.holdShift = False
                     pyautogui.keyUp(key="shift")
@@ -106,12 +117,25 @@ class HandController():
                 pyautogui.scroll(scrollAmount)
         else:
             if abs(deltaX) >= 5:
+                # If shift is not being held, hold it (for horizontal scrolling)
                 if not self.holdShift: 
                     self.holdShift = True
                     pyautogui.keyDown(key="shift")
                 scrollAmount = deltaX
                 if abs(deltaX) > 125: scrollAmount = 125 if scrollAmount > 0 else -125
                 pyautogui.scroll(scrollAmount)
+    
+    def getValueBasedOnPinchDistance(self, pinchRange, valueRange):
+        # The actual distance between the index and thumb
+        pinchDist = pinchDist = self.getDistanceBetweenPoints(4, 8)
+        # Bound pinchDist by pinchRange
+        pinchDist = max(pinchRange[0], pinchDist)
+        pinchDist = min(pinchRange[1], pinchDist)
+        return np.interp(pinchDist, pinchRange, valueRange)
+    
+    def changeVolume(self):
+        newVolume = self.getValueBasedOnPinchDistance([20, 200], self.volumeRange)
+        self.volume.SetMasterVolumeLevel(newVolume, None)
 
     # Check which gesture is currently being held. If a new gesture is held for 5 frames,
     # the controller will switch the corresponding state.
@@ -135,6 +159,9 @@ class HandController():
                     candidateState = ControllerState.DRAG
             else:
                 candidateState = ControllerState.SCROLLING
+        elif (not middleOpen and not ringOpen):
+            if not pinkyOpen: candidateState = ControllerState.CHANGE_VOLUME
+            else: candidateState = ControllerState.CHANGE_BRIGHTNESS
 
         if candidateState != self.currentState: 
             if candidateState != self.stateToSwitchTo:
@@ -142,14 +169,14 @@ class HandController():
                 self.stateToSwitchTo = candidateState
             else:
                 self.frameCount += 1
-                if (self.frameCount == 1): 
+                if (self.frameCount == 3): 
                     self.currentState = candidateState
                     print(self.currentState)
 
     def start(self):
-        while HandController.capture.isOpened():
+        while self.capture.isOpened():
             # Get the current frame being displayed by the camera
-            success, img = HandController.capture.read()
+            success, img = self.capture.read()
             # If the frame is empty, continue looping
             if not success: 
                 print("Camera Frame Is Empty")
@@ -201,13 +228,15 @@ class HandController():
                             self.canClick = False
                     case ControllerState.SCROLLING:
                         self.scroll()
+                    case ControllerState.CHANGE_VOLUME:
+                        self.changeVolume()
             else:
                 self.currentState = ControllerState.IDLE
                 self.frameCount = 0
 
             cv2.imshow("Controller", img)
             if cv2.waitKey(5) == ord('q'):
-                HandController.capture.release()
+                self.capture.release()
                 cv2.destroyAllWindows()
 
 def main():
